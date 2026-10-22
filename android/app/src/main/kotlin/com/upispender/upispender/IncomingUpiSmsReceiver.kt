@@ -34,7 +34,7 @@ internal object SmsParser {
     )
     private val upi = Regex("""(?i)\b(?:upi|vpa|bhim)\b|[a-z0-9._-]{2,}@[a-z0-9._-]{2,}""")
     private val currencyFirst = Regex(
-        """(?i)(?:₹|(?<![a-z])INR\b|(?<![a-z])Rs\.?\b)\s*[:\-]?\s*([\d,]+(?:\.\d{1,2})?)"""
+        """(?i)(?:₹|(?<![a-z])INR\.?|(?<![a-z])Rs\.?)\s*[:\-]?\s*([\d,]+(?:\.\d{1,2})?)"""
     )
     private val currencyLast = Regex(
         """(?i)\b([\d,]+(?:\.\d{1,2})?)\s*(?:INR\b|Rs\.?\b)"""
