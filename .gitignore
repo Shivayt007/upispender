@@ -1,0 +1,13 @@
+.dart_tool/
+.packages
+.pub/
+build/
+android/.gradle/
+android/local.properties
+android/key.properties
+android/captures/
+ios/Pods/
+*.iml
+.idea/
+.vscode/
+.DS_Store
