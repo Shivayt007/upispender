@@ -326,3 +326,66 @@ class _SmsInboxScreenState extends State<SmsInboxScreen> with WidgetsBindingObse
     );
   }
 }
+
+
+/// Lightweight home shortcut that refreshes on app resume or notification tap.
+class SmsReviewBanner extends StatefulWidget {
+  const SmsReviewBanner({super.key, required this.store});
+  final SpendStore store;
+
+  @override
+  State<SmsReviewBanner> createState() => _SmsReviewBannerState();
+}
+
+class _SmsReviewBannerState extends State<SmsReviewBanner> with WidgetsBindingObserver {
+  int count = 0;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) refresh();
+  }
+
+  Future<void> refresh() async {
+    try {
+      final next = await SmsDetection.instance.status();
+      if (mounted) setState(() => count = next.pending);
+    } catch (_) {
+      // No incoming SMS permission or unavailable native platform.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (count == 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Card(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        child: ListTile(
+          leading: const Icon(Icons.sms_outlined),
+          title: Text(count.toString() + ' UPI payment(s) to review'),
+          subtitle: const Text('Check detected bank SMS before adding it to your budget'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () async {
+            await Navigator.push(context, MaterialPageRoute<void>(
+              builder: (_) => SmsInboxScreen(store: widget.store),
+            ));
+            await refresh();
+          },
+        ),
+      ),
+    );
+  }
+}
