@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'data.dart';
 import 'notifications.dart';
+import 'sms_capture.dart';
 import 'add_sheet.dart';
 
 IconData categoryIcon(String name) => switch (name) {
@@ -122,6 +123,7 @@ class HomeScreen extends StatelessWidget {
         const SizedBox(height: 6),
         Text(DateFormat('EEEE, d MMMM yyyy').format(today),
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        SmsReviewBanner(store: store),
         const SizedBox(height: 20),
         SurfaceCard(child: Column(children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -715,6 +717,7 @@ class SettingsScreen extends StatelessWidget {
       ));
     if (accepted == true) {
       await store.clearAll();
+      await SmsDetection.instance.clear();
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('All payments deleted')));
     }
@@ -769,6 +772,15 @@ class SettingsScreen extends StatelessWidget {
       const SizedBox(height: 14),
       SurfaceCard(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9), child: Column(children: [
         ListTile(
+          leading: const Icon(Icons.sms_outlined),
+          title: const Text('Automatic UPI SMS detection'),
+          subtitle: const Text('Opt in to recognize incoming bank debit alerts'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+            builder: (ctx) => SmsSettingsScreen(store: store))),
+        ),
+        const Divider(),
+        ListTile(
           leading: const Icon(Icons.category_outlined),
           title: const Text('Custom categories'),
           subtitle: Text(store.categories.length.toString() + ' categories available'),
@@ -797,7 +809,7 @@ class SettingsScreen extends StatelessWidget {
         ),
       ])),
       const SizedBox(height: 14),
-      Text('UPI Spend Tracker • v1.0\nSMS capture, imports, PIN/biometrics, widgets, backup and exports are planned, not enabled in v1.',
+      Text('UPI Spend Tracker • v1.1\nIncoming UPI SMS detection is optional. Statement imports, PIN/biometrics, widgets, backup and exports are still planned.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall),
     ]);
