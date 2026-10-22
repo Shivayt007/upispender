@@ -131,11 +131,12 @@ class SpendStore extends ChangeNotifier {
 
   Future<void> init() async {
     final dbPath = p.join(await getDatabasesPath(), 'upispender_v1.db');
-    _db = await openDatabase(dbPath, version: 1, onCreate: (db, version) async {
+    _db = await openDatabase(dbPath, version: 2, onCreate: (db, version) async {
       await db.execute('CREATE TABLE transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, amount_paise INTEGER NOT NULL, payee TEXT NOT NULL, category TEXT NOT NULL, note TEXT NOT NULL, tag TEXT NOT NULL, occurred_at INTEGER NOT NULL)');
       await db.execute('CREATE INDEX idx_transactions_date ON transactions (occurred_at DESC)');
       await db.execute('CREATE TABLE categories (name TEXT PRIMARY KEY, color_code INTEGER NOT NULL, icon_name TEXT NOT NULL)');
       await db.execute('CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+      await db.execute('CREATE TABLE sms_imports (fingerprint TEXT PRIMARY KEY, transaction_id INTEGER NOT NULL)');
       final batch = db.batch();
       for (final category in defaultCategories) {
         batch.insert('categories', {'name': category.name, 'color_code': category.colorCode, 'icon_name': category.iconName});
@@ -144,6 +145,10 @@ class SpendStore extends ChangeNotifier {
         batch.insert('preferences', {'key': setting.key, 'value': setting.value});
       }
       await batch.commit(noResult: true);
+    }, onUpgrade: (db, oldVersion, newVersion) async {
+      if (oldVersion < 2) {
+        await db.execute('CREATE TABLE IF NOT EXISTS sms_imports (fingerprint TEXT PRIMARY KEY, transaction_id INTEGER NOT NULL)');
+      }
     });
     await reload();
     ready = true;
@@ -180,6 +185,38 @@ class SpendStore extends ChangeNotifier {
     _undoWasDelete = false;
     await reload();
     return inserted;
+  }
+
+  /// Idempotent SMS import. The transaction and SMS fingerprint are inserted atomically.
+  /// Raw message content is never stored in SQLite.
+  Future<bool> importSms({
+    required String fingerprint,
+    required int paise,
+    required String payee,
+    required String category,
+    required DateTime at,
+  }) async {
+    if (fingerprint.isEmpty || paise <= 0) {
+      throw ArgumentError('Invalid detected UPI debit');
+    }
+    var added = false;
+    await _db!.transaction((txn) async {
+      final existing = await txn.query(
+        'sms_imports', columns: ['fingerprint'],
+        where: 'fingerprint = ?', whereArgs: [fingerprint], limit: 1,
+      );
+      if (existing.isNotEmpty) return;
+      final id = await txn.insert('transactions', SpendEntry(
+        paise: paise, payee: payee, category: category,
+        at: at, note: 'Reviewed bank SMS', tag: 'Needed',
+      ).toMap());
+      await txn.insert('sms_imports', {
+        'fingerprint': fingerprint, 'transaction_id': id,
+      });
+      added = true;
+    });
+    if (added) await reload();
+    return added;
   }
 
   Future<void> update(SpendEntry entry) async {
@@ -300,6 +337,7 @@ class SpendStore extends ChangeNotifier {
 
   Future<void> clearAll() async {
     await _db!.delete('transactions');
+    await _db!.delete('sms_imports');
     _undoEntry = null;
     await reload();
   }
