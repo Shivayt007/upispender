@@ -369,7 +369,7 @@ class _PeriodDashboardState extends State<PeriodDashboard> {
             const SizedBox(height: 6),
             ClipRRect(borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(
-                value: current.total == 0 ? 0 : item.value / current.total,
+                value: current.total == 0 ? 0.0 : item.value / current.total,
                 color: Color(widget.store.category(item.key).colorCode),
                 minHeight: 9,
                 backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
