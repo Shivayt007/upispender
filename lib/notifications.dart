@@ -4,6 +4,7 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 import 'data.dart';
+import 'analytics.dart';
 
 class SpendNotifications {
   SpendNotifications._();
@@ -15,6 +16,13 @@ class SpendNotifications {
     android: AndroidNotificationDetails(
       'spend_alerts', 'Budget alerts',
       channelDescription: 'Notifications when daily spending approaches the target',
+      importance: Importance.high, priority: Priority.high,
+    ),
+  );
+  static const _smart = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'smart_spend', 'Smart spending warnings',
+      channelDescription: 'Category budget and unusually large debit alerts',
       importance: Importance.high, priority: Priority.high,
     ),
   );
@@ -69,27 +77,65 @@ class SpendNotifications {
 
   Future<void> spendingChanged(SpendStore store, int oldSpent) async {
     if (!_initialized || !store.flag('notifications') || isQuiet(store)) return;
+    final hidden = store.flag('privacyMode');
     final target = store.todayTarget;
-    if (target <= 0) return;
-    final before = oldSpent / target;
-    final after = store.todaySpent / target;
-    int? crossed;
-    for (final percentage in [50, 80, 100]) {
-      final n = percentage / 100;
-      if (before < n && after >= n) crossed = percentage;
+    if (target > 0) {
+      final before = oldSpent / target;
+      final after = store.todaySpent / target;
+      int? crossed;
+      for (final percentage in [50, 80, 100]) {
+        final level = percentage / 100;
+        if (before < level && after >= level) crossed = percentage;
+      }
+      if (crossed != null) {
+        final message = crossed == 100
+            ? 'You reached your daily target. Consider pausing extra purchases.'
+            : 'You have used ' + crossed.toString() + '% of your daily target.';
+        try {
+          await _plugin.show(
+            DateTime.now().millisecondsSinceEpoch.remainder(1000000),
+            hidden ? 'Daily budget update' : 'Budget update • ' + rupees(store.todaySpent),
+            message, _threshold,
+          );
+        } catch (e) {
+          debugPrint('Budget warning could not be shown: $e');
+        }
+      }
     }
-    if (crossed == null) return;
-    final text = crossed == 100
-        ? 'You have reached your daily budget. Consider pausing extra purchases.'
-        : 'You have used $crossed% of your daily target.';
-    try {
-      await _plugin.show(
-        DateTime.now().millisecondsSinceEpoch.remainder(1000000),
-        'Budget update • ' + rupees(store.todaySpent),
-        text, _threshold,
-      );
-    } catch (e) {
-      debugPrint('Budget notification failed: $e');
+    final saved = store.lastAddedEntry;
+    if (saved == null || !sameDay(saved.at, DateTime.now())) return;
+    final cap = store.limitForCategory(saved.category);
+    if (cap != null && cap > 0) {
+      final nowInCategory = store.spentInCategoryOn(saved.category, DateTime.now());
+      final previousInCategory = nowInCategory - saved.paise;
+      int? crossed;
+      for (final percentage in [80, 100]) {
+        final boundary = cap * percentage / 100;
+        if (previousInCategory < boundary && nowInCategory >= boundary) crossed = percentage;
+      }
+      if (crossed != null) {
+        try {
+          await _plugin.show(
+            9201, saved.category + ' budget warning',
+            'You have reached ' + crossed.toString() + '% of your daily ' +
+              saved.category + ' limit.', _smart,
+          );
+        } catch (e) {
+          debugPrint('Category warning could not be shown: $e');
+        }
+      }
+    }
+    if (SpendAnalytics.isUnusual(saved, store.entries)) {
+      try {
+        await _plugin.show(
+          9202, 'Unusually large payment recorded',
+          hidden ? 'This payment is much larger than your recent average.'
+            : rupees(saved.paise) + ' is at least 3× your recent payment average.',
+          _smart,
+        );
+      } catch (e) {
+        debugPrint('Unusual spending notification failed: $e');
+      }
     }
   }
 
