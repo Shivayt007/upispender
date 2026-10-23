@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'data.dart';
 import 'notifications.dart';
 import 'sms_capture.dart';
+import 'insights_screens.dart';
 import 'add_sheet.dart';
 
 IconData categoryIcon(String name) => switch (name) {
@@ -124,6 +125,7 @@ class HomeScreen extends StatelessWidget {
         Text(DateFormat('EEEE, d MMMM yyyy').format(today),
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         SmsReviewBanner(store: store),
+        BudgetWarningsPanel(store: store),
         const SizedBox(height: 20),
         SurfaceCard(child: Column(children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -205,6 +207,7 @@ class HomeScreen extends StatelessWidget {
             ),
           )),
         ]),
+        SmallSpendsShortcut(store: store),
         const SizedBox(height: 24),
         sectionTitle('Today’s activity', trailing: TextButton(
           onPressed: () => Navigator.push(context, MaterialPageRoute<void>(
@@ -429,6 +432,7 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   DateTime day = DateTime.now();
+  int reportMode = 0;
   Future<void> pickDate() async {
     final choice = await showDatePicker(
       context: context, initialDate: day,
@@ -439,6 +443,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (reportMode != 0) {
+      return PeriodDashboard(
+        store: widget.store, mode: reportMode,
+        onModeChanged: (mode) => setState(() => reportMode = mode),
+      );
+    }
     final snapshot = widget.store.snapshot(day);
     final hidden = widget.store.flag('privacyMode');
     final positive = snapshot.left >= 0;
@@ -448,6 +458,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Text('Daily report', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
         const SizedBox(height: 4),
         const Text('Small steps. Stronger habits.'),
+        const SizedBox(height: 16),
+        SegmentedButton<int>(
+          selected: {reportMode}, showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: 0, label: Text('Daily')),
+            ButtonSegment(value: 1, label: Text('Weekly')),
+            ButtonSegment(value: 2, label: Text('Monthly')),
+          ],
+          onSelectionChanged: (values) => setState(() => reportMode = values.first),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.push(context, MaterialPageRoute<void>(
+            builder: (_) => SpendingCalendarScreen(store: widget.store))),
+          icon: const Icon(Icons.calendar_month_outlined),
+          label: const Text('Spending calendar'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.push(context, MaterialPageRoute<void>(
+            builder: (_) => SmallSpendsScreen(store: widget.store))),
+          icon: const Icon(Icons.toll_outlined),
+          label: const Text('Small-spending tracker'),
+        ),
         const SizedBox(height: 16),
         OutlinedButton.icon(
           onPressed: pickDate,
@@ -515,7 +549,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ])),
         ])),
         const SizedBox(height: 18),
-        Text('Weekly and monthly charts, image/PDF sharing, and full exports are planned for v2.',
+        Text('Sharing as an image/PDF and full exports are planned for a future release.',
             style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
       ],
     );
@@ -623,6 +657,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
           onPressed: save, icon: const Icon(Icons.save_outlined), label: const Text('Save target'))),
       ])),
       const SizedBox(height: 14),
+      CategoryBudgetsCard(store: widget.store),
+      const SizedBox(height: 14),
       SurfaceCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         sectionTitle('Motivation'),
         const SizedBox(height: 14),
@@ -643,7 +679,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       SurfaceCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         sectionTitle('Coming in future versions'),
         const SizedBox(height: 8),
-        const Text('Category caps, rollover, weekly bonus budget, salary-cycle budgeting, target suggestions and recurring bills.'),
+        const Text('Rollover, weekly bonus budget, salary-cycle budgeting, target suggestions and recurring bills.'),
       ])),
     ]);
   }
@@ -809,7 +845,7 @@ class SettingsScreen extends StatelessWidget {
         ),
       ])),
       const SizedBox(height: 14),
-      Text('UPI Spend Tracker • v1.1\nIncoming UPI SMS detection is optional. Statement imports, PIN/biometrics, widgets, backup and exports are still planned.',
+      Text('UPI Spend Tracker • v1.2\nIncoming UPI SMS detection is optional. Statement imports, PIN/biometrics, widgets, backup and exports are still planned.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall),
     ]);
