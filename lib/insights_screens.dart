@@ -505,7 +505,7 @@ class _SpendingCalendarScreenState extends State<SpendingCalendarScreen> {
               icon: const Icon(Icons.chevron_right)),
           ]),
           const SizedBox(height: 10),
-          const Row(children: [
+          Row(children: [
             for (final label in ['M','T','W','T','F','S','S'])
               Expanded(child: Text(label, textAlign: TextAlign.center,
                 style: TextStyle(fontWeight: FontWeight.w700))),
