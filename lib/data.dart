@@ -103,6 +103,7 @@ class SpendStore extends ChangeNotifier {
   SpendEntry? _undoEntry;
   bool _undoWasDelete = false;
   bool ready = false;
+  SpendEntry? lastAddedEntry;
 
   static const defaultPrefs = <String, String>{
     'dailyLimit': '100000',
@@ -215,6 +216,7 @@ class SpendStore extends ChangeNotifier {
       tag: entry.tag, at: entry.at);
     _undoEntry = inserted;
     _undoWasDelete = false;
+    lastAddedEntry = inserted;
     await reload();
     return inserted;
   }
@@ -232,6 +234,7 @@ class SpendStore extends ChangeNotifier {
       throw ArgumentError('Invalid detected UPI debit');
     }
     var added = false;
+    SpendEntry? addedEntry;
     await _db!.transaction((txn) async {
       final existing = await txn.query(
         'sms_imports', columns: ['fingerprint'],
@@ -245,9 +248,14 @@ class SpendStore extends ChangeNotifier {
       await txn.insert('sms_imports', {
         'fingerprint': fingerprint, 'transaction_id': id,
       });
+      addedEntry = SpendEntry(id: id, paise: paise, payee: payee,
+        category: category, note: 'Reviewed bank SMS', at: at);
       added = true;
     });
-    if (added) await reload();
+    if (added) {
+      lastAddedEntry = addedEntry;
+      await reload();
+    }
     return added;
   }
 
@@ -270,6 +278,7 @@ class SpendStore extends ChangeNotifier {
     final entry = _undoEntry;
     if (entry == null || entry.id == null) return;
     _undoEntry = null;
+    lastAddedEntry = null;
     if (_undoWasDelete) {
       await _db!.insert('transactions', entry.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
     } else {
@@ -371,6 +380,7 @@ class SpendStore extends ChangeNotifier {
     await _db!.delete('transactions');
     await _db!.delete('sms_imports');
     _undoEntry = null;
+    lastAddedEntry = null;
     await reload();
   }
 
