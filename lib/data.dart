@@ -99,6 +99,7 @@ class SpendStore extends ChangeNotifier {
   final List<SpendEntry> entries = [];
   final List<SpendCategory> categories = [];
   final Map<String, String> _prefs = {};
+  final Map<String, int> categoryBudgets = {};
   SpendEntry? _undoEntry;
   bool _undoWasDelete = false;
   bool ready = false;
@@ -131,12 +132,13 @@ class SpendStore extends ChangeNotifier {
 
   Future<void> init() async {
     final dbPath = p.join(await getDatabasesPath(), 'upispender_v1.db');
-    _db = await openDatabase(dbPath, version: 2, onCreate: (db, version) async {
+    _db = await openDatabase(dbPath, version: 3, onCreate: (db, version) async {
       await db.execute('CREATE TABLE transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, amount_paise INTEGER NOT NULL, payee TEXT NOT NULL, category TEXT NOT NULL, note TEXT NOT NULL, tag TEXT NOT NULL, occurred_at INTEGER NOT NULL)');
       await db.execute('CREATE INDEX idx_transactions_date ON transactions (occurred_at DESC)');
       await db.execute('CREATE TABLE categories (name TEXT PRIMARY KEY, color_code INTEGER NOT NULL, icon_name TEXT NOT NULL)');
       await db.execute('CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
       await db.execute('CREATE TABLE sms_imports (fingerprint TEXT PRIMARY KEY, transaction_id INTEGER NOT NULL)');
+      await db.execute('CREATE TABLE category_limits (category TEXT PRIMARY KEY, limit_paise INTEGER NOT NULL CHECK (limit_paise > 0))');
       final batch = db.batch();
       for (final category in defaultCategories) {
         batch.insert('categories', {'name': category.name, 'color_code': category.colorCode, 'icon_name': category.iconName});
@@ -148,6 +150,9 @@ class SpendStore extends ChangeNotifier {
     }, onUpgrade: (db, oldVersion, newVersion) async {
       if (oldVersion < 2) {
         await db.execute('CREATE TABLE IF NOT EXISTS sms_imports (fingerprint TEXT PRIMARY KEY, transaction_id INTEGER NOT NULL)');
+      }
+      if (oldVersion < 3) {
+        await db.execute('CREATE TABLE IF NOT EXISTS category_limits (category TEXT PRIMARY KEY, limit_paise INTEGER NOT NULL CHECK (limit_paise > 0))');
       }
     });
     await reload();
@@ -166,6 +171,33 @@ class SpendStore extends ChangeNotifier {
     _prefs
       ..clear()
       ..addAll({for (final x in prefRows) x['key'] as String: x['value'] as String});
+    final limits = await _db!.query('category_limits');
+    categoryBudgets
+      ..clear()
+      ..addAll({for (final row in limits) row['category'] as String: row['limit_paise'] as int});
+    notifyListeners();
+  }
+
+  /// Null means that category has no separate daily limit.
+  int? limitForCategory(String name) => categoryBudgets[name];
+
+  int spentInCategoryOn(String name, DateTime when) =>
+      on(when).where((item) => item.category == name)
+          .fold<int>(0, (sum, item) => sum + item.paise);
+
+  Future<void> setCategoryLimit(String name, int? paise) async {
+    if (!categories.any((cat) => cat.name == name)) {
+      throw ArgumentError('Unknown category');
+    }
+    if (paise == null) {
+      await _db!.delete('category_limits', where: 'category = ?', whereArgs: [name]);
+      categoryBudgets.remove(name);
+    } else {
+      if (paise <= 0) throw ArgumentError('Category limit must be positive');
+      await _db!.insert('category_limits', {'category': name, 'limit_paise': paise},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      categoryBudgets[name] = paise;
+    }
     notifyListeners();
   }
 
