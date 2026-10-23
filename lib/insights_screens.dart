@@ -246,3 +246,351 @@ class _SmallSpendsScreenState extends State<SmallSpendsScreen> {
     );
   }
 }
+
+
+/// Reports tab content for full Monday-Sunday weeks and calendar months.
+class PeriodDashboard extends StatefulWidget {
+  const PeriodDashboard({
+    super.key, required this.store, required this.mode, required this.onModeChanged,
+  });
+  final SpendStore store;
+  final int mode; // 1 week, 2 month
+  final ValueChanged<int> onModeChanged;
+  @override
+  State<PeriodDashboard> createState() => _PeriodDashboardState();
+}
+
+class _PeriodDashboardState extends State<PeriodDashboard> {
+  DateTime anchor = DateTime.now();
+  @override
+  void didUpdateWidget(covariant PeriodDashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mode != widget.mode) anchor = DateTime.now();
+  }
+
+  void move(int direction) {
+    setState(() {
+      anchor = widget.mode == 1
+        ? DateTime(anchor.year, anchor.month, anchor.day + direction * 7)
+        : DateTime(anchor.year, anchor.month + direction);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final week = widget.mode == 1;
+    final start = week ? SpendAnalytics.startOfWeek(anchor)
+      : SpendAnalytics.startOfMonth(anchor);
+    final end = week ? start.add(const Duration(days: 7))
+      : SpendAnalytics.nextMonth(start);
+    final prevStart = week ? start.subtract(const Duration(days: 7))
+      : SpendAnalytics.previousMonth(start);
+    final prevEnd = start;
+    final current = SpendAnalytics.summarize(widget.store.entries, start, end);
+    final previous = SpendAnalytics.summarize(widget.store.entries, prevStart, prevEnd);
+    final hidden = widget.store.flag('privacyMode');
+    final days = SpendAnalytics.completedDayCounts(widget.store, current, DateTime.now());
+    final title = week
+      ? DateFormat('d MMM').format(start) + ' – ' + DateFormat('d MMM yyyy').format(end.subtract(const Duration(days: 1)))
+      : DateFormat('MMMM yyyy').format(start);
+    final canNext = week
+      ? SpendAnalytics.startOfWeek(anchor).isBefore(SpendAnalytics.startOfWeek(DateTime.now()))
+      : SpendAnalytics.startOfMonth(anchor).isBefore(SpendAnalytics.startOfMonth(DateTime.now()));
+    final categoryRanks = SpendAnalytics.categoryRanking(current);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+      children: [
+        Text('Spending reports', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+        const SizedBox(height: 6),
+        Text('Your money patterns, only on this device', style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 14),
+        SegmentedButton<int>(
+          selected: {widget.mode},
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: 0, label: Text('Daily')),
+            ButtonSegment(value: 1, label: Text('Weekly')),
+            ButtonSegment(value: 2, label: Text('Monthly')),
+          ],
+          onSelectionChanged: (values) => widget.onModeChanged(values.first),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.calendar_month_outlined),
+          label: const Text('Open spending calendar'),
+          onPressed: () => Navigator.push(context, MaterialPageRoute<void>(
+            builder: (_) => SpendingCalendarScreen(store: widget.store))),
+        ),
+        const SizedBox(height: 14),
+        Row(children: [
+          IconButton(tooltip: 'Previous period', onPressed: () => move(-1),
+            icon: const Icon(Icons.chevron_left)),
+          Expanded(child: Text(title, textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+          IconButton(tooltip: 'Next period',
+            onPressed: canNext ? () => move(1) : null,
+            icon: const Icon(Icons.chevron_right)),
+        ]),
+        const SizedBox(height: 10),
+        InsightCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(week ? 'THIS WEEK' : 'THIS MONTH',
+            style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(height: 8),
+          Text(rupees(current.total, hidden: hidden),
+            style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          Text(SpendAnalytics.comparison(current.total, previous.total)),
+          const SizedBox(height: 8),
+          Text(current.count.toString() + ' recorded payments',
+            style: Theme.of(context).textTheme.bodySmall),
+        ])),
+        const SizedBox(height: 12),
+        InsightCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(week ? 'Daily spending • 7 days' : 'Daily spending • calendar month',
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 16),
+          _SpendingBars(days: current.dayTotals, weekly: week, hidden: hidden),
+          const SizedBox(height: 10),
+          Text('Each bar represents the amount recorded that day.',
+            style: Theme.of(context).textTheme.bodySmall),
+        ])),
+        const SizedBox(height: 12),
+        InsightCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Spending by category',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 14),
+          if (categoryRanks.isEmpty) const Text('No transactions recorded for this period.')
+          else for (final item in categoryRanks) ...[
+            Row(children: [
+              Expanded(child: Text(item.key)),
+              Text(rupees(item.value, hidden: hidden), style: const TextStyle(fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 6),
+            ClipRRect(borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: current.total == 0 ? 0 : item.value / current.total,
+                color: Color(widget.store.category(item.key).colorCode),
+                minHeight: 9,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              )),
+            const SizedBox(height: 12),
+          ],
+        ])),
+        const SizedBox(height: 12),
+        InsightCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Budget habits', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          Text('Recorded days within target: ' + days.under.toString()),
+          const SizedBox(height: 4),
+          Text('Recorded days over target: ' + days.over.toString()),
+          const SizedBox(height: 4),
+          Text('Days without records: ' + days.untracked.toString()),
+          const SizedBox(height: 8),
+          Text('Days without entries are not counted as successful budgeting days.',
+            style: Theme.of(context).textTheme.bodySmall),
+        ])),
+        const SizedBox(height: 12),
+        InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+            builder: (_) => SmallSpendsScreen(store: widget.store))),
+          child: InsightCard(child: Row(children: [
+            const Icon(Icons.toll_outlined, color: Color(0xFFE3A04C)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Under ₹100 tracker', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(current.smallCount.toString() + ' small purchases',
+                style: Theme.of(context).textTheme.bodySmall),
+            ])),
+            Text(rupees(current.smallTotal, hidden: hidden),
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+            const Icon(Icons.chevron_right),
+          ])),
+        ),
+      ],
+    );
+  }
+}
+
+class _SpendingBars extends StatelessWidget {
+  const _SpendingBars({required this.days, required this.weekly, required this.hidden});
+  final List<DayTotal> days;
+  final bool weekly, hidden;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxValue = math.max(1, days.fold<int>(0, (top, d) => math.max(top, d.paise)));
+    const chartHeight = 115.0;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        height: 174,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          for (final day in days)
+            SizedBox(
+              width: weekly ? 43 : 28,
+              child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                if (weekly)
+                  SizedBox(height: 16, child: Text(
+                    hidden || day.paise == 0 ? '' : NumberFormat.compact(locale: 'en_IN').format(day.paise / 100),
+                    style: const TextStyle(fontSize: 9), maxLines: 1)),
+                SizedBox(
+                  height: chartHeight,
+                  child: Align(alignment: Alignment.bottomCenter, child: Tooltip(
+                    message: DateFormat('d MMM yyyy').format(day.date) + ' • ' +
+                      rupees(day.paise, hidden: hidden),
+                    child: Container(
+                      width: weekly ? 23 : 15,
+                      height: day.paise == 0 ? 3 : math.max(5, chartHeight * day.paise / maxValue),
+                      decoration: BoxDecoration(
+                        color: day.paise == 0
+                          ? Theme.of(context).colorScheme.outlineVariant
+                          : const Color(0xFF20B994),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                      ),
+                    ),
+                  )),
+                ),
+                const SizedBox(height: 8),
+                Text(weekly ? DateFormat('E').format(day.date).substring(0, 2)
+                  : day.date.day % 5 == 0 || day.date.day == 1 ? day.date.day.toString() : '',
+                  style: const TextStyle(fontSize: 10)),
+              ]),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+class SpendingCalendarScreen extends StatefulWidget {
+  const SpendingCalendarScreen({super.key, required this.store});
+  final SpendStore store;
+  @override
+  State<SpendingCalendarScreen> createState() => _SpendingCalendarScreenState();
+}
+
+class _SpendingCalendarScreenState extends State<SpendingCalendarScreen> {
+  DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime selected = dayStart(DateTime.now());
+
+  void changeMonth(int delta) {
+    setState(() {
+      month = DateTime(month.year, month.month + delta);
+      selected = month;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final firstWeekday = month.weekday - DateTime.monday;
+    final numberOfDays = DateUtils.getDaysInMonth(month.year, month.month);
+    final today = dayStart(DateTime.now());
+    final canNext = month.isBefore(DateTime(today.year, today.month));
+    final hidden = widget.store.flag('privacyMode');
+    final entries = widget.store.on(selected);
+    final spent = widget.store.spentOn(selected);
+    final target = widget.store.targetFor(selected);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Spending calendar')),
+      body: ListView(padding: const EdgeInsets.all(18), children: [
+        InsightCard(child: Column(children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            IconButton(onPressed: () => changeMonth(-1), icon: const Icon(Icons.chevron_left)),
+            Text(DateFormat('MMMM yyyy').format(month),
+              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+            IconButton(onPressed: canNext ? () => changeMonth(1) : null,
+              icon: const Icon(Icons.chevron_right)),
+          ]),
+          const SizedBox(height: 10),
+          const Row(children: [
+            for (final label in ['M','T','W','T','F','S','S'])
+              Expanded(child: Text(label, textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.w700))),
+          ]),
+          const SizedBox(height: 9),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7, childAspectRatio: .85, crossAxisSpacing: 3, mainAxisSpacing: 5),
+            itemCount: ((firstWeekday + numberOfDays + 6) ~/ 7) * 7,
+            itemBuilder: (context, index) {
+              final dayNumber = index - firstWeekday + 1;
+              if (dayNumber <= 0 || dayNumber > numberOfDays) return const SizedBox.shrink();
+              final date = DateTime(month.year, month.month, dayNumber);
+              final future = date.isAfter(today);
+              final logged = widget.store.on(date).isNotEmpty;
+              final actual = widget.store.spentOn(date);
+              final cap = widget.store.targetFor(date);
+              final isOver = actual > cap;
+              final color = future || !logged
+                ? Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: .25)
+                : isOver ? const Color(0xFFE96363) : const Color(0xFF20B994);
+              final isSelected = sameDay(date, selected);
+              return Material(
+                color: color.withValues(alpha: future || !logged ? .04 : .15),
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: future ? null : () => setState(() => selected = date),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: isSelected ? Border.all(color: Theme.of(context).colorScheme.primary, width: 1.6) : null,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Text(dayNumber.toString(), style: TextStyle(fontWeight: FontWeight.w800,
+                        color: future ? Theme.of(context).disabledColor : null)),
+                      const SizedBox(height: 4),
+                      Container(width: 6, height: 6,
+                        decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                    ]),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          Wrap(spacing: 13, runSpacing: 6, children: const [
+            _Legend(Color(0xFF20B994), 'Within limit'),
+            _Legend(Color(0xFFE96363), 'Over limit'),
+            _Legend(Color(0xFFACB2B8), 'No record'),
+          ]),
+        ])),
+        const SizedBox(height: 14),
+        InsightCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(DateFormat('EEEE, d MMM yyyy').format(selected),
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          const SizedBox(height: 8),
+          Text(rupees(spent, hidden: hidden) + ' spent / ' +
+            rupees(target, hidden: hidden) + ' target',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          if (entries.isEmpty) const Text('No payments recorded on this day.')
+          else for (final item in entries) ListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: Text(item.payee.isEmpty ? item.category : item.payee),
+            subtitle: Text(item.category),
+            trailing: Text(rupees(item.paise, hidden: hidden)),
+          ),
+        ])),
+      ]),
+    );
+  }
+}
+
+class _Legend extends StatelessWidget {
+  const _Legend(this.color, this.title);
+  final Color color;
+  final String title;
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+    CircleAvatar(backgroundColor: color, radius: 4),
+    const SizedBox(width: 5),
+    Text(title, style: Theme.of(context).textTheme.labelSmall),
+  ]);
+}
