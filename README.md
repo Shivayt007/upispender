@@ -1,49 +1,40 @@
-# UPI Spend Tracker — v1.2 (Android / Flutter)
+# Jarvis Voice Assistant (Android)
 
-Offline-first personal UPI and cash expense tracking with all amounts in Indian rupees. All spending history, category limits, charts and warning rules are kept **on the device**; no server or bank login is required.
+**Separate experimental Kotlin Android app**; package `com.shivay.jarvisvoice`. This project is independent of the UPI Spend Tracker source code. It uses a persistent, user-started microphone foreground service for an *experimental* screen-off command mode; it is **not a guaranteed hardware wake-word assistant**.
 
-## New in v1.2 — first-time user guide
+## Features included
+- Reads notification previews from selected WhatsApp, Telegram, Instagram, and SMS apps with English TTS; user grants Notification Access in Android Settings.
+- Opt-in **Start hands-free** mode with an ongoing microphone disclosure notification. Say **"Hey Jarvis, wake up"**, then **"Call Rahul"** or **"Call that person"** (refers to the last readable message sender).
+- Matches saved contacts, asks **"Call Rahul? Say yes or no"**, and calls via Android `TelecomManager.placeCall` using `CALL_PHONE` permission.
+- Toggle individual source apps. No server or message uploads. No conversation history saved; only last sender may be remembered locally for the command.
+- Stop listening from the app or the ongoing notification. English TTS and English speech recognition.
 
-### 1. Category budgets (Budget tab)
-Open **Budget → Category budgets**. Tap *Set limit* beside a category. Example: set **Food ₹300 per day** and **Travel ₹200 per day**. Category spending is calculated from payments saved to that category and the bar shows the amount used today. Orange shows 80% or more; red means the limit is exceeded. Tap the category to change or remove its limit. Each category budget resets with the local calendar day, and does not replace your overall daily target. A category without a set limit has no restriction. These are advisory limits, not bank/card payment blockers.
+## How to use
+1. Install debug APK; open it **once** to set permissions.
+2. Grant **Notification Access**, **Microphone**, **Contacts**, **Phone** and (Android 13+) **Notifications**.
+3. In the app, enable the desired messenger sources and tap **Start hands-free** while app is open.
+4. Say **Hey Jarvis, wake up**, then **Call Rahul**. Reply **yes** or **no** when asked.
+5. A normal SIM call uses the phone's default calling account. On some dual-SIM devices the system asks which SIM to use.
+6. Tap **Stop hands-free** or use the notification's **Stop** action to turn the microphone off.
 
-### 2. Weekly and monthly charts (Reports tab)
-Tap **Reports → Weekly** or **Monthly**. The bar chart shows each day's saved expenses, and the category section shows where money went. Swipe the chart horizontally for longer months. Use the left/right arrows to inspect older weeks or months. A week is Monday–Sunday; months use real calendar boundaries. The comparison shows the recorded spending relative to the previous complete week/month; a current in-progress period naturally has fewer elapsed days. No-data days are shown as days with no records, not assumed to be within budget.
+## What it cannot guarantee
+- Android's `SpeechRecognizer` is **not designed for perpetual hotword recognition**. This implementation restarts finite recognition sessions and may stop on screen-off, network loss, battery management, other audio use, or vendor restrictions. It may consume significant battery. For a true production lock-screen assistant, replace it with a validated on-device wake-word engine or supported default-assistant implementation, subject to OEM support.
+- Phone calls initiated while locked are device/policy dependent. Confirm with real hardware before relying on hands-free calling.
+- Contact names in chat notifications may differ from names in Contacts; ambiguous matches do not call.
+- If the messenger hides notification previews, Jarvis cannot read or recover the hidden message. Calls from unknown numbers or via WhatsApp are **not supported**.
+- Voice confirmation alone does **not authenticate a speaker**; other people nearby might issue the command. Only enable hands-free mode when safe.
+- Speech recognition may use the phone's installed recognition provider and the internet. `EXTRA_PREFER_OFFLINE` is a hint, not a guarantee of offline transcription.
 
-### 3. Small-spending tracker (Home or Reports tab)
-Tap **Home → Small spends under ₹100** or **Reports → Small-spending tracker**. Choose Today, Week or Month to see how many purchases were *strictly below ₹100*, their combined total, and their share of all spending. A purchase of exactly ₹100 does not count, while ₹99.99 does.
+## Build debug APK
+CI workflow `.github/workflows/android-apk.yml` builds on commits to `jarvis-voice-assistant` and uploads `jarvis-debug-apk` as an Actions artifact. The repo's **Actions** tab provides the APK ZIP if GitHub Actions is enabled.
 
-### 4. Spending calendar (Reports tab)
-Open **Reports → Spending calendar**. Green dots are days with recorded expenses at or below the daily target; red means a recorded day exceeded the target; grey means no spending was logged. Tap a date to view that day's saved payments. Calendar arrows navigate months; future dates are not selectable. No record does **not** mean no spending.
+Locally, install JDK 17, Android SDK platform 35 and build-tools 35.0.0, and Gradle 8.11.1, then run:
 
-### 5. Smart spending warnings (Home and local notifications)
-The Home dashboard shows warnings when your overall daily target is at least 80% used, a category daily limit is at least 80% used, or small purchases under ₹100 account for at least 20% of your target across at least 3 payments. After saving a current-day payment, the app can send an additional **category budget alert** at 80%/100% or an **unusually large payment alert** if that single expense is at least ₹500 and at least 3 times the average of **5 or more previous payments from the preceding 30 days**. All calculations run locally. Smart notifications respect the current notification toggle and quiet hours. Warnings depend on recorded transactions and are not financial advice.
+```sh
+gradle :app:assembleDebug
+```
 
-**SMS records still require approval:** In **Settings → Automatic UPI SMS detection**, grant the permission voluntarily. New incoming UPI debit SMS are placed into a review inbox (not added automatically). Select a category and tap *Save payment* to include them in category limits, reports and warnings.
+APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
-## Other existing features
-Daily budget ring, weekday/weekend targets, manual quick-add, edit/delete/undo, on-device SQLite, daily reports, category suggestions, Needed/Impulse tags, streaks and affordability preview.
-
-## Download and install
-1. Open **[GitHub Actions APK builds](https://github.com/Shivayt007/upispender/actions/workflows/android.yml)**.
-2. Choose the latest successful **Build Android APK** workflow.
-3. Download **UPI-Spend-Tracker-APK**, extract the ZIP, install \`app-release.apk\`.
-4. Open the app to set your default daily target, and try logging a payment manually.
-
-> **Important update/signing warning:** The GitHub workflow currently signs test APKs using an ephemeral debug keystore, which might differ between builds. Updating an existing installation may fail with "App not installed" due to a signing mismatch. **Do not uninstall your previous app if it contains important financial records.** There is not yet a backup/export feature. A persistent private signing key and encrypted local backup should be implemented before relying on app upgrades long-term.
-
-The Android app is a local APK; no hosting or VPS is required.
-
-## Privacy and limitations
-- All records stay local in app-private SQLite. No internet/account access.
-- Incoming SMS detection is opt-in and uses RECEIVE_SMS, not READ_SMS.
-- Raw messages and OTPs are not stored. SMS detection is not guaranteed for every bank or UPI payment.
-- No direct GPay/PhonePe/Paytm synchronization is claimed.
-- These charts visualize recorded payments only, not bank account balances or cash you have not logged.
-- SMS permission may require Google Play policy eligibility and permission review for store distribution.
-- Daily warning notifications may be delayed or disabled by Android battery/notification settings.
-
-## Still planned
-Statement CSV/PDF imports, exports/backups, fingerprint/PIN app lock, permanent signing, home widget, recurring payments, rollover, salary cycles, and Hindi localization.
-
----
+## Privacy
+Notification content is processed in-memory for voice playback; no online backend or advertising SDK is included. Users can disable notifications per app and stop microphone listening any time. Check local laws and obtain consent before voice/phone automation.
