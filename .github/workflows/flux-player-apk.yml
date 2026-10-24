@@ -1,0 +1,43 @@
+name: Flux Android APK
+
+on:
+  push:
+    branches:
+      - feature/flux-download-player
+    paths:
+      - 'flux_player/**'
+      - '.github/workflows/flux-player-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Flutter Android scaffolding
+        working-directory: flux_player
+        run: flutter create --platforms=android --org dev.flux --project-name flux_player .
+      - name: Resolve dependencies
+        working-directory: flux_player
+        run: flutter pub get
+      - name: Analyze Dart code
+        working-directory: flux_player
+        run: flutter analyze --no-fatal-infos
+      - name: Build Android release APKs
+        working-directory: flux_player
+        run: flutter build apk --release --split-per-abi
+      - name: Upload installable APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flux-Download-Player-APK
+          path: flux_player/build/app/outputs/flutter-apk/*-release.apk
+          if-no-files-found: error
+          retention-days: 30
