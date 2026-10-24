@@ -30,7 +30,7 @@ void main() {
 
 String humanSize(int b) {
   if (b <= 0) return '0 B';
-  final i = (math.log(b) / math.log(1024)).floor().clamp(0, 4);
+  final i = (math.log(b) / math.log(1024)).floor().clamp(0, 4).toInt();
   return '${(b / math.pow(1024, i)).toStringAsFixed(i == 0 ? 0 : 1)} ${['B','KB','MB','GB','TB'][i]}';
 }
 
@@ -56,7 +56,7 @@ class DownloadItem {
   final int received, total, parts;
   bool get done => status == 'completed';
   bool get active => status == 'running' || status == 'queued';
-  double get fraction => total == 0 ? 0 : (received / total).clamp(0.0, 1.0);
+  double get fraction => total == 0 ? 0.0 : (received / total).clamp(0.0, 1.0).toDouble();
 }
 
 class DownloadsPage extends StatefulWidget {
@@ -99,9 +99,11 @@ class _DownloadsPageState extends State<DownloadsPage> {
     }
   }
 
-  void play(String source, String name) => Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => CinemaPage(source: source, title: name)),
-  );
+  void play(String source, String name) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CinemaPage(source: source, title: name),
+    ));
+  }
 
   Future<void> addDownload() async {
     final url = TextEditingController();
@@ -354,10 +356,10 @@ class _CinemaPageState extends State<CinemaPage> {
 
   void gestureVolumeBrightness(double dy) {
     if (brightnessSide) {
-      brightness = (brightness - dy / 280).clamp(.03, 1.0);
+      brightness = (brightness - dy / 280).clamp(.03, 1.0).toDouble();
       bridge.invokeMethod<void>('brightness', {'value': brightness});
     } else {
-      volume = (volume - dy / 280).clamp(0.0, 1.0);
+      volume = (volume - dy / 280).clamp(0.0, 1.0).toDouble();
       bridge.invokeMethod<void>('volume', {'value': volume});
     }
   }
