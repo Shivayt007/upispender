@@ -222,9 +222,14 @@ class DownloadService : Service() {
                 }
             } finally {
                 runningIds.remove(job.id)
+                // A quick pause -> resume can mark a running task queued while its
+                // old worker is still shutting down. Start the new worker here.
+                if (job.status == "queued") schedule(job)
                 if (runningIds.isEmpty()) {
-                    val last = synchronized(lock) { jobs.values.any { it.status == "queued" } }
-                    if (!last) stopSelf()
+                    val waiting = synchronized(lock) {
+                        jobs.values.any { it.status == "queued" || it.status == "running" }
+                    }
+                    if (!waiting) stopSelf()
                 }
             }
         }
